@@ -186,6 +186,7 @@ void Spar::cb_act_goal() {
 			ros::Duration dt_yaw = (goal_.yawrate == 0.0) ? ros::Duration(0) : duration_from_distance(dyaw, goal_.yawrate);
 
 			motion_duration_ = ( (dt_xy > dt_z) && (dt_xy > dt_yaw) ) ? dt_xy : ( dt_z > dt_yaw ) ? dt_z : dt_yaw;
+        	// ROS_INFO("[Spar] dur: [%0.2f, %0.2f, %0.2f; %0.2f]", dt_xy.toSec(), dt_z.toSec(), dt_yaw.toSec(), motion_duration_.toSec(1);
 		} else if (goal_.motion == spar_msgs::FlightMotionGoal::MOTION_GOTO_POS) {
 			end_pos_ = goal_.position;
 			end_yaw_ = start_yaw_;
@@ -319,13 +320,6 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 		if (alpha > 1.0)
 			alpha = 1.0;
 
-		ros::Time stamp_start_;
-		geometry_msgs::Point start_pos_;
-		double start_yaw_;
-		ros::Duration motion_duration_;
-		geometry_msgs::Point end_pos_;
-		double end_yaw_;
-
 		switch(goal_.motion) {
 			//All GOTO functions work in position-hold mode
 			case spar_msgs::FlightMotionGoal::MOTION_GOTO_POS:
@@ -337,15 +331,11 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 				double dz = end_pos_.z - start_pos_.z;
 				double dyaw = shortest_angle(end_yaw_, start_yaw_);
 
-				//TODO: THIS IS NOT WORKING!
+				//TODO: FOR SOME REASON, YAW IS DOING VERY STRANGE MOVES!
 				output_.position.x = start_pos_.x + dx*alpha;
 				output_.position.y = start_pos_.y + dy*alpha;
 				output_.position.z = start_pos_.z + dz*alpha;
 				output_.yaw = start_yaw_ + dyaw*alpha;
-
-				ROS_INFO("[Spar] start_: [%0.2f, %0.2f, %0.2f; %0.2f]", start_pos_.x, start_pos_.y, start_pos_.z, start_yaw_);
-				ROS_INFO("[Spar] end_: [%0.2f, %0.2f, %0.2f; %0.2f]", end_pos_.x, end_pos_.y, end_pos_.z, end_yaw_);
-				ROS_INFO("[Spar] output_: [%0.2f, %0.2f, %0.2f; %0.2f]", output_.position.x, output_.position.y, output_.position.z, output_.yaw);
 
 				break;
 			}
