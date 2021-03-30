@@ -15,8 +15,10 @@ geometry_msgs/Point position
 float32 yaw
 
 # Velocity information (some things may be ignored, see above)
-# Goal will act as "setpoint" if velocity is ==0, values of <0 will be rejected
+# Goal will act as "setpoint" if all velocities are ==0, values of <0 will be rejected
 # If all velocities are ==0, goal will imidiately be finished if not using "wait_for_convergence"
+# For multiple-directional motions (e.g. goto: motion in x/y/z/yaw), the slowest motion will
+# be used to coordinate the motion such that all motions finish at the same point in time
 float32 velocity_vertical			# Speed to ascend and descent
 float32 velocity_horizontal			# Speed to translate
 float32 yawrate						# Speed to rotate
@@ -38,7 +40,7 @@ float32 final_yaw					# Final commanded yaw
 
 # Feedback
 
-float32 progress					# Progress 0..1 from start to goal 
+float32 progress					# Progress 0..1 from start to goal
 bool waiting_for_convergence		# Mark to show if waiting for convergence
 
 geometry_msgs/Point goal_position	# Current goal position

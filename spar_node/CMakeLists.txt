@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   mavros_msgs
   roscpp
   rospy
+  geometry_msgs
   spar_msgs
 )
 
