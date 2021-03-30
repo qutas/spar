@@ -19,6 +19,12 @@ class Spar
 		void cb_timer(const ros::TimerEvent& event);
 
 	private:
+		uint16_t cancel_goal();
+		uint16_t type_mask_from_motion(const uint8_t motion);
+		double yaw_from_quaternion(const geometry_msgs::Quaternion q);
+		double shortest_angle( const double a1, const double a2 );
+
+	private:
 		ros::NodeHandle nh_;
 		ros::NodeHandle nhp_;
 		std::string param_action_name_;

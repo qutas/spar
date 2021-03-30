@@ -15,12 +15,14 @@ geometry_msgs/Point position
 float32 yaw
 
 # Velocity information (some things may be ignored, see above)
-# Goal will act as setpoint if velocity is <=0
+# Goal will act as "setpoint" if velocity is ==0, values of <0 will be rejected
+# If all velocities are ==0, goal will imidiately be finished if not using "wait_for_convergence"
 float32 velocity_vertical			# Speed to ascend and descent
 float32 velocity_horizontal			# Speed to translate
 float32 yawrate						# Speed to rotate
 
 # Convergence information (wait until at location before marking 'complete')
+# If enabled, radius and range values of <=0 will be rejected
 bool wait_for_convergence			# Enable "wait for convergence"
 float32 position_radius				# Positional radius around final location (bubble waypoint)
 float32 yaw_range					# Angular range around final direction (direction wedge)
