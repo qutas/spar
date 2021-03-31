@@ -61,7 +61,7 @@ def send_wps(spar_client):
 
 		# If we had an error, print and stop sending
 		if not success:
-			rospy.logerror("Waypoints failed!")
+			rospy.logerr("Waypoints failed!")
 			break;
 
 	if success:

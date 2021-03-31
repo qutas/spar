@@ -39,7 +39,7 @@ def send_flight_motion(spar_client, motion, x, y, z, yaw):
 	if result == GoalStatus.SUCCEEDED:
 		rospy.loginfo("Go to complete!")
 	else:
-		rospy.logerror("Go to failed!")
+		rospy.logerr("Go to failed!")
 
 		# Detailed Feedback
 		if result != GoalStatus.SUCCEEDED:

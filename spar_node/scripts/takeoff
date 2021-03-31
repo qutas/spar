@@ -34,7 +34,7 @@ def send_flight_motion(spar_client):
 	if result == GoalStatus.SUCCEEDED:
 		rospy.loginfo("Take-off complete!")
 	else:
-		rospy.logerror("Take-off failed!")
+		rospy.logerr("Take-off failed!")
 
 		# Detailed Feedback
 		if result != GoalStatus.SUCCEEDED:

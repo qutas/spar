@@ -31,7 +31,7 @@ def send_flight_motion(spar_client):
 	if result == GoalStatus.SUCCEEDED:
 		rospy.loginfo("Landing complete!")
 	else:
-		rospy.logerror("Landing failed!")
+		rospy.logerr("Landing failed!")
 
 		# Detailed Feedback
 		if result != GoalStatus.SUCCEEDED:
