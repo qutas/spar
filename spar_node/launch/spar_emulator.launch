@@ -1,0 +1,38 @@
+<?xml version='1.0'?>
+<launch>
+	<!-- Emulator Parameters -->
+	<arg name="uav_name" default="emulated_uav"/>
+
+	<!-- Spar Node -->
+	<remap from="spar/mav_state" to="state"/>
+	<remap from="spar/pose" to="pose"/>
+	<remap from="spar/setpoint" to="mavel/reference/triplet"/>
+	<include file="$(find spar_node)/launch/spar.launch"/>
+
+	<!-- Emulator Node -->
+	<node pkg="uavusr_emulator" type="uavusr_emulator_node" name="emulator"
+	clear_params="true" output="screen">
+		<!-- Operational Parameters -->
+		<param name="frame_id" value="map" type="str"/>
+		<param name="model_id" value="$(arg uav_name)" type="str"/>
+		<param name="update_rate_pose" value="50.0" type="double"/>
+		<param name="update_rate_image" value="1.0" type="double"/>
+
+		<!-- Mass of the UAV (kg) -->
+		<param name="model_mass" value="1.0" type="double"/>
+		<!-- Thurst produced by a single motor (N) -->
+		<param name="single_motor_thrust" value="5.0" type="double"/>
+		<!-- Gain for tracking yaw goal -->
+		<param name="yaw_tracking_gain" value="0.8" type="double"/>
+	</node>
+
+	<!-- Mavel Node -->
+	<node pkg="mavel" type="mavel_node" name="mavel" clear_params="true" output="screen">
+		<rosparam command="load" file="$(find uavusr_emulator)/config/mavel_params.yaml"/>
+
+		<remap from="~command/attitude" to="reference/attitude"/>
+		<remap from="~state/odometry" to="odom"/>
+		<remap from="~state/mav_state" to="state"/>
+	</node>
+
+</launch>

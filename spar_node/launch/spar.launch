@@ -1,83 +1,8 @@
 <?xml version='1.0'?>
 <launch>
-	<arg name="spar_only" default="true" />
-	<arg name="mavros" default="false" />
-	<arg name="emulator" default="false" />
-
-	<arg name="uav_name" default="emulated_uav"/>
-
-	<arg name="fcu_url" default="udp://:14550@127.0.0.1:14557" />
-	<arg name="gcs_url" default="" />
-	<arg name="tgt_system" default="1" />
-	<arg name="tgt_component" default="1" />
-	<arg name="log_output" default="screen" />
-	<arg name="fcu_protocol" default="v2.0" />
-	<arg name="respawn_mavros" default="false" />
-
-	<group if="$(arg spar_only)">
-		<node name="spar" pkg="spar_node" type="spar_node" respawn="false" output="screen">
-			<!--remap from="~/mav_state" to="mavros/state"/-->
-			<!--remap from="~/pose" to="mavros/local_position/pose"/-->
-			<!--remap from="~/setpoint" to="mavros/setpoint_raw/local"/-->
-		</node>
-	</group>
-
-	<group if="$(arg emulator)">
-		<node name="spar" pkg="spar_node" type="spar_node" respawn="false" output="screen">
-			<remap from="~/mav_state" to="state"/>
-			<remap from="~/pose" to="pose"/>
-			<remap from="~/setpoint" to="mavel/reference/triplet"/>
-		</node>
-
-		<node pkg="uavusr_emulator" type="uavusr_emulator_node" name="emulator"
-		clear_params="true" output="screen">
-			<!-- Operational Parameters -->
-			<param name="frame_id" value="map" type="str"/>
-			<param name="model_id" value="$(arg uav_name)" type="str"/>
-			<param name="update_rate_pose" value="50.0" type="double"/>
-			<param name="update_rate_image" value="1.0" type="double"/>
-
-			<!-- Mass of the UAV (kg) -->
-			<param name="model_mass" value="1.0" type="double"/>
-			<!-- Thurst produced by a single motor (N) -->
-			<param name="single_motor_thrust" value="5.0" type="double"/>
-			<!-- Gain for tracking yaw goal -->
-			<param name="yaw_tracking_gain" value="0.8" type="double"/>
-		</node>
-
-		<node pkg="mavel" type="mavel_node" name="mavel"
-		clear_params="true" output="screen">
-			<rosparam command="load" file="$(find uavusr_emulator)/config/mavel_params.yaml"/>
-
-			<remap from="~command/attitude" to="reference/attitude"/>
-			<remap from="~state/odometry" to="odom"/>
-			<remap from="~state/mav_state" to="state"/>
-		</node>
-	</group>
-
-	<group if="$(arg mavros)">
-		<node name="spar" pkg="spar_node" type="spar_node" respawn="false" output="screen">
-			<remap from="~/mav_state" to="state"/>
-			<remap from="~/pose" to="pose"/>
-			<remap from="~/setpoint" to="mavel/reference/triplet"/>
-		</node>
-
-		<include file="$(find mavros)/launch/node.launch">
-			<!--
-			<arg name="pluginlists_yaml" value="$(find mavros)/launch/px4_pluginlists.yaml" />
-			<arg name="config_yaml" value="$(find mavros)/launch/px4_config.yaml" />
-			-->
-
-			<arg name="pluginlists_yaml" value="$(find mavros)/launch/px4_pluginlists.yaml" />
-			<arg name="config_yaml" value="$(find mavros)/launch/px4_config.yaml" />
-
-			<arg name="fcu_url" value="$(arg fcu_url)" />
-			<arg name="gcs_url" value="$(arg gcs_url)" />
-			<arg name="tgt_system" value="$(arg tgt_system)" />
-			<arg name="tgt_component" value="$(arg tgt_component)" />
-			<arg name="log_output" value="$(arg log_output)" />
-			<arg name="fcu_protocol" value="$(arg fcu_protocol)" />
-			<arg name="respawn_mavros" default="$(arg respawn_mavros)" />
-		</include>
-	</group>
+	<node name="spar" pkg="spar_node" type="spar_node" respawn="false" output="screen">
+		<!--remap from="~/mav_state" to="mavros/state"/-->
+		<!--remap from="~/pose" to="mavros/local_position/pose"/-->
+		<!--remap from="~/setpoint" to="mavros/setpoint_raw/local"/-->
+	</node>
 </launch>
