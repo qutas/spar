@@ -1,0 +1,121 @@
+#!/usr/bin/env python2
+
+import sys
+from math import *
+
+#import roslib
+#roslib.load_manifest('spar_node')
+import rospy
+import actionlib
+from actionlib_msgs.msg import GoalStatus
+
+from spar_msgs.msg import FlightMotionAction, FlightMotionGoal
+
+def send_flight_motion(spar_client, motion, x, y, z, yaw):
+	# Create our goal
+	goal = FlightMotionGoal()
+	goal.motion = motion
+	goal.position.x = x
+	goal.position.y = y
+	goal.position.z = z
+	goal.yaw = yaw
+	goal.velocity_vertical = rospy.get_param("~speed", 1.0)
+	goal.velocity_horizontal = rospy.get_param("~speed", 1.0)
+	goal.yawrate = rospy.get_param("~speed", 1.0)
+	goal.wait_for_convergence = True							# Wait for our takeoff "waypoint" to be reached
+	goal.position_radius = rospy.get_param("~position_radius", 0.1)
+	goal.yaw_range = rospy.get_param("~yaw_range", 0.1)
+
+	# Send the goal
+	rospy.loginfo("Sending goal motion...")
+	spar_client.send_goal(goal)
+	 # If shutdown is issued, cancel current mission before rospy is shutdown
+	rospy.on_shutdown(lambda : spar_client.cancel_goal())
+	# Wait for the result of the goal
+	spar_client.wait_for_result()
+
+	# Output some feedback for our flight
+	result = spar_client.get_state()
+	if result == GoalStatus.SUCCEEDED:
+		rospy.loginfo("Go to complete!")
+	else:
+		rospy.logerror("Go to failed!")
+
+		# Detailed Feedback
+		if result != GoalStatus.SUCCEEDED:
+			if(result == GoalStatus.PENDING) or (result == GoalStatus.ACTIVE):
+				rospy.loginfo("Sent command to cancel current mission")
+			elif(result == GoalStatus.PREEMPTED):
+				rospy.logwarn("The current mission was cancelled")
+			elif(result == GoalStatus.ABORTED):
+				rospy.logwarn("The current mission was aborted")
+			elif(result == GoalStatus.RECALLED):
+				rospy.logerr("Error: The current mission was recalled")
+			elif(result == GoalStatus.REJECTED):
+				rospy.logerr("Error: The current mission was rejected")
+			else:
+				rospy.logerr("Error: An unknown goal status was recieved")
+
+def decode_args(args):
+	x = 0.0
+	y = 0.0
+	z = 0.0
+	yaw = 0.0
+	motion = FlightMotionGoal.MOTION_STOP
+
+	if len(args) == 2:
+		# Yaw Mode
+		yaw = float(args[1])
+		motion = FlightMotionGoal.MOTION_GOTO_YAW
+		rospy.loginfo("GOTO (YAW): [%0.2f]" % yaw)
+	elif len(args) == 4:
+		# XYZ Mode
+		x = float(args[1])
+		y = float(args[2])
+		z = float(args[3])
+		motion = FlightMotionGoal.MOTION_GOTO_POS
+		rospy.loginfo("GOTO (POS): [%0.2f, %0.2f, %0.2f]" % (x,y,z))
+	elif len(args) == 5:
+		# XYZ Yaw Mode
+		x = float(args[1])
+		y = float(args[2])
+		z = float(args[3])
+		yaw = float(args[4])
+		motion = FlightMotionGoal.MOTION_GOTO
+		rospy.loginfo("GOTO: [%0.2f, %0.2f, %0.2f; %0.2f]" % (x,y,z,yaw))
+
+	return (motion, x, y, z, yaw)
+
+
+def main(args):
+	# Initialise ROS
+	rospy.init_node('takeoff', anonymous=True)
+	# Get our action namespace (where to send flight commands to)
+	action_ns = rospy.get_param("~action_topic", 'spar/flight')
+
+	# Figure out where we're going
+	(motion, x, y, z, yaw) = decode_args(args)
+
+	# Create our action client
+	spar_client = actionlib.SimpleActionClient(action_ns, FlightMotionAction)
+	rospy.loginfo("Waiting for spar...")
+	spar_client.wait_for_server()
+
+	# Send the flight command
+	# This will lock the thread until it is "done"
+	# Make sure "ros is ok" in case we hit CTRL-C while waiting above
+	if not rospy.is_shutdown():
+		send_flight_motion(spar_client, motion, x, y, z, yaw)
+
+if __name__ == '__main__':
+	if len(sys.argv) in [2, 4, 5]:
+		try:
+			main(sys.argv)
+		except rospy.ROSInterruptException:
+			pass
+
+		print('')
+	else:
+		print("Usage:")
+		print("Turn on point: goto YAW")
+		print("Go to location: goto X Y Z [YAW]")
