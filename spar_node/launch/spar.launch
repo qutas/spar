@@ -1,6 +1,8 @@
 <?xml version='1.0'?>
 <launch>
 	<node name="spar" pkg="spar_node" type="spar_node" respawn="false" output="screen">
+		<param name="update_rate" type="double" value="20.0" />
+		<param name="frame_id" type="string" value="map" />
 		<!--remap from="~/mav_state" to="mavros/state"/-->
 		<!--remap from="~/pose" to="mavros/local_position/pose"/-->
 		<!--remap from="~/setpoint" to="mavros/setpoint_raw/local"/-->
