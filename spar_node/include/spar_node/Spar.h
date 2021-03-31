@@ -41,6 +41,8 @@ class Spar
 		//Angle calculations
 		double yaw_from_quaternion(const geometry_msgs::Quaternion& q);	//Get a yaw value from a quaternion
 		double shortest_angle( const double a1, const double a2 );		//Get a "shortest distance" for the yaw greater-circle problem
+		double wrap_pi(const double a);									//Returns an angle between -pi and pi
+		double calc_unwraped_yaw(const double start, const double end);	//Used to calculate the shortest linear increase in angles (i.e. -3.0 to 3.0 is non linear if wrapping around -pi), which means we can perform linear interpolation on our delta-yaw, and have nice smooth motion
 
 	private:
 		ros::NodeHandle nh_;
@@ -61,6 +63,9 @@ class Spar
 		ros::Duration motion_duration_;
 		geometry_msgs::Point end_pos_;
 		double end_yaw_;
+
+		bool takeoff_complete_;
+		bool landing_complete_;
 
 		bool is_running_;
 		geometry_msgs::PoseStamped pose_;

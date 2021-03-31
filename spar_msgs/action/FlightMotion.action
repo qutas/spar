@@ -25,6 +25,8 @@ float32 yawrate						# Speed to rotate
 
 # Convergence information (wait until at location before marking 'complete')
 # If enabled, radius and range values of <=0 will be rejected
+# Note: Landing motions will do not accept "wait_for_convergence", but instead will continue
+#		landing until the action is either cancelled or the UAV is disarmed
 bool wait_for_convergence			# Enable "wait for convergence"
 float32 position_radius				# Positional radius around final location (bubble waypoint)
 float32 yaw_range					# Angular range around final direction (direction wedge)

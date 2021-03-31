@@ -17,6 +17,8 @@ Spar::Spar() :
 	param_frame_id_("map"),
 	param_update_rate_(20.0),
 	is_running_(false),
+	takeoff_complete_(false),
+	landing_complete_(false),
 	stamp_start_(0),
 	start_yaw_(0.0),
 	motion_duration_(0),
@@ -53,8 +55,10 @@ Spar::Spar() :
 }
 
 Spar::~Spar(void) {
+	/*
 	if(as_.isActive())
 		cancel_goal();
+	*/
 }
 
 uint16_t Spar::type_mask_from_motion(const uint8_t motion) {
@@ -110,10 +114,28 @@ double Spar::yaw_from_quaternion(const geometry_msgs::Quaternion& q) {
 	return std::atan2(2.0 * (q.z * q.w + q.x * q.y) , - 1.0 + 2.0 * (q.w * q.w + q.x * q.x));
 }
 
-double Spar::shortest_angle( const double a1, const double a2 )
-{
-    double diff = std::fmod( ( a2 - a1 + 180.0 ), 360.0) - 180.0;
-    return diff < -180.0 ? diff + 360.0 : diff;
+double Spar::shortest_angle( const double a1, const double a2 ) {
+    double diff = std::fmod( ( a2 - a1 + M_PI ), 2*M_PI) - M_PI;
+    return diff < -M_PI ? diff + 2*M_PI : diff;
+}
+
+double Spar::wrap_pi(const double a) {
+     // already in range
+     if (-M_PI <= a && a <= M_PI) {
+         return a;
+     }
+
+     const double range = 2*M_PI;
+     const double inv_range = 1.0 / range;
+     const double num_wraps = std::floor((a + M_PI) * inv_range);
+     return a - range * num_wraps;
+}
+
+double Spar::calc_unwraped_yaw(const double start, const double end) {
+	double diff = end - start;
+	return (std::fabs(diff) < M_PI) ? start + diff :
+		   (start > end) ? start + fabs(shortest_angle(end, start)) :
+						   start - fabs(shortest_angle(end, start));
 }
 
 ros::Duration Spar::duration_from_distance(const double dist, const double vel) {
@@ -127,6 +149,17 @@ ros::Duration Spar::duration_from_distance_2d(const double dist_a, const double 
 void Spar::cb_act_goal() {
 	// accept the new goal
 	goal_ = *(as_.acceptNewGoal());
+
+	if(!is_running_) {
+		//We're not yet ready to accept goals
+		//XXX:	This should be taken care of by "as_.shutdown()",
+		//		but that doesn't seem to work
+		cancel_goal();
+		ROS_ERROR("[Spar] Rejecting goal: aircraft not ready for offboard control (%s, %s, %s)",
+				  mav_state_.connected ? "Connected" : "Disonnected",
+				  mav_state_.mode.c_str(),
+				  mav_state_.armed ? "Armed" : "Disarmed");
+	}
 
 	if( (goal_.motion != spar_msgs::FlightMotionGoal::MOTION_STOP) &&
 		(goal_.motion != spar_msgs::FlightMotionGoal::MOTION_GOTO) &&
@@ -174,7 +207,7 @@ void Spar::cb_act_goal() {
 			end_yaw_ = start_yaw_;
 		} else if (goal_.motion == spar_msgs::FlightMotionGoal::MOTION_GOTO) {
 			end_pos_ = goal_.position;
-			end_yaw_ = goal_.yaw;
+			end_yaw_ = calc_unwraped_yaw(start_yaw_, goal_.yaw);
 
 			double dx = (end_pos_.x - start_pos_.x);
 			double dy = (end_pos_.y - start_pos_.y);
@@ -201,7 +234,7 @@ void Spar::cb_act_goal() {
 			motion_duration_ = (dt_xy > dt_z) ? dt_xy : dt_z;
 		} else if (goal_.motion == spar_msgs::FlightMotionGoal::MOTION_GOTO_YAW) {
 			end_pos_ = start_pos_;
-			end_yaw_ = goal_.yaw;
+			end_yaw_ = calc_unwraped_yaw(start_yaw_, goal_.yaw);
 
 			double dyaw = shortest_angle(end_yaw_, start_yaw_);
 
@@ -293,7 +326,7 @@ bool Spar::is_waiting_for_convergence() {
 		double dpy = end_pos_.y - pose_.pose.position.y;
 		double dpz = end_pos_.z - pose_.pose.position.z;
 		double dp = std::sqrt(dpx*dpx + dpy*dpy + dpz*dpz);
-		double dy = shortest_angle(goal_.yaw, yaw_from_quaternion(pose_.pose.orientation));
+		double dy = shortest_angle(end_yaw_, yaw_from_quaternion(pose_.pose.orientation));
 
 		// Check to see if we're within our limits
 		if( (dp > goal_.position_radius) || (dy > goal_.yaw_range) )
@@ -329,20 +362,20 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 				double dx = end_pos_.x - start_pos_.x;
 				double dy = end_pos_.y - start_pos_.y;
 				double dz = end_pos_.z - start_pos_.z;
-				double dyaw = shortest_angle(end_yaw_, start_yaw_);
+				//double dyaw_a = shortest_angle(end_yaw_, start_yaw_);
+				double dyaw = end_yaw_ - start_yaw_;
 
-				//TODO: FOR SOME REASON, YAW IS DOING VERY STRANGE MOVES!
 				output_.position.x = start_pos_.x + dx*alpha;
 				output_.position.y = start_pos_.y + dy*alpha;
 				output_.position.z = start_pos_.z + dz*alpha;
-				output_.yaw = start_yaw_ + dyaw*alpha;
+				output_.yaw = wrap_pi(start_yaw_ + dyaw*alpha);
 
 				break;
 			}
 			//XXX: This is same as above, but without the extra math (as alpha == 1.0)
 			case spar_msgs::FlightMotionGoal::MOTION_STOP: {
 				output_.position = end_pos_;
-				output_.yaw = end_yaw_;
+				output_.yaw = wrap_pi(end_yaw_);
 
 				break;
 			}
@@ -353,12 +386,16 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 					output_.velocity.y = 0.0;
 					output_.velocity.z = goal_.velocity_vertical;
 
-					output_.yaw = end_yaw_;
+					output_.yaw = wrap_pi(end_yaw_);
 				} else {
+					if(!takeoff_complete_) {
+						takeoff_complete_ = true;
+						ROS_INFO("Take-off motion complete, switching to position hold");
+					}
 					// We're done the start-up part, switch to pos-hold and fly to location
 					output_.type_mask = type_mask_from_motion(spar_msgs::FlightMotionGoal::MOTION_STOP);
 					output_.position = end_pos_;
-					output_.yaw = end_yaw_;
+					output_.yaw = wrap_pi(end_yaw_);
 				}
 
 				break;
@@ -367,11 +404,11 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 				output_.velocity.x = 0.0;
 				output_.velocity.y = 0.0;
 				output_.velocity.z = -goal_.velocity_vertical;
-				output_.yaw = end_yaw_;
+				output_.yaw = wrap_pi(end_yaw_);
 
 				//XXX:	Keep waiting forever!
 				//		Disarm to finish landing sequence
-				is_waiting = true;
+				is_waiting = !landing_complete_;
 
 				break;
 			}
@@ -395,6 +432,10 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 				result_.final_position = output_.position;
 				result_.final_yaw = output_.yaw;
 				as_.setSucceeded(result_);
+
+				//Reset the "special-case" variables
+				takeoff_complete_ = false;
+				landing_complete_ = false;
 			}
 		}
 
@@ -417,8 +458,17 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 			do_stop = true;
 			ROS_WARN("[Spar] Disconnect detected!");
 		} else if(!mav_state_.armed) {
-			do_stop = true;
-			ROS_WARN("[Spar] Disarm detected!");
+			if( (goal_.motion == spar_msgs::FlightMotionGoal::MOTION_LAND) && (!landing_complete_)) {
+				//XXX:	Special case for landing mode (UAV should be disarmed mid-motion)
+				//		This will buy us one more pass through the timer, which should
+				//		then register the success case, and clear landing_complete_
+				//		The outcome is that on the next pass, the typical "Disarm Detected" will run
+				landing_complete_ = true;
+			} else {
+				//But in most cases this is a big issue (see: very unexpected)
+				do_stop = true;
+				ROS_WARN("[Spar] Disarm detected!");
+			}
 		} else if(mav_state_.mode != FLIGHT_MODE_OFFBOARD) {
 			do_stop = true;
 			ROS_WARN("[Spar] Mode change detected!");
@@ -427,10 +477,14 @@ void Spar::cb_timer(const ros::TimerEvent& event) {
 		// Our node is allowed to start back up when
 		// we've gone back through the setup checks
 		if(do_stop) {
-			//ROS_WARN("[Spar] Shutting down detected!");
+			ROS_INFO("[Spar] Stopped action server!");
 			cancel_goal();
 			is_running_ = false;
 			as_.shutdown();
+
+			//Reset the "special-case" variables
+			takeoff_complete_ = false;
+			landing_complete_ = false;
 		}
 	} else {
 		// We're not operating, so command to output to current location.
