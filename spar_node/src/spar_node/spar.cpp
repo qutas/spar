@@ -42,6 +42,8 @@ Spar::Spar() :
 	output_.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
 	output_.type_mask = type_mask_from_motion(spar_msgs::FlightMotionGoal::MOTION_STOP);
 
+	pose_.pose.orientation.w = 1.0; //XXX: Give a valid quaternion to start with
+
 	//register the goal and feeback callbacks
 	as_.registerGoalCallback(boost::bind(&Spar::cb_act_goal, this));
 	as_.registerPreemptCallback(boost::bind(&Spar::cb_act_preempt, this));
