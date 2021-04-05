@@ -1,0 +1,25 @@
+<?xml version='1.0'?>
+<launch>
+	<!-- Emulator Parameters -->
+	<arg name="uav_name" default="emulated_uav"/>
+
+	<!-- Spar Node -->
+	<remap from="spar/mav_state" to="uavasr/state"/>
+	<remap from="spar/pose" to="uavasr/pose"/>
+	<remap from="spar/setpoint" to="uavasr/setpoint_raw/local"/>
+	<include file="$(find spar_node)/launch/spar.launch"/>
+
+	<!-- Emulator Node -->
+	<node pkg="uavasr_emulator" type="uavasr_emulator_node" name="uavasr" clear_params="true" output="screen">
+		<!-- Operational Parameters -->
+		<param name="frame_id" value="map" type="str"/>
+		<param name="model_id" value="$(arg uav_name)" type="str"/>
+
+		<param name="start_armed" value="true" type="bool"/>
+		<param name="start_mode_offboard" value="true" type="bool"/>
+
+		<param name="update_rate_pose" value="50.0" type="double"/>
+		<param name="update_rate_battery" value="1.0" type="double"/>
+		<param name="update_rate_state" value="1.0" type="double"/>
+	</node>
+</launch>
