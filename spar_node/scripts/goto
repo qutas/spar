@@ -108,7 +108,7 @@ def main(args):
 		send_flight_motion(spar_client, motion, x, y, z, yaw)
 
 if __name__ == '__main__':
-	if len(sys.argv) in [2, 4, 5]:
+	if (len(sys.argv) in [2, 4, 5]) and ('--help' not in sys.argv):
 		try:
 			main(sys.argv)
 		except rospy.ROSInterruptException:
