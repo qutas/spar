@@ -41,6 +41,9 @@ class Guidance():
 		# Set our linear and rotational velocities for the flight
 		self.vel_linear = rospy.get_param("~vel_linear", 0.2)
 		self.vel_yaw = rospy.get_param("~vel_yaw", 0.2)
+		# Set our position and yaw waypoint accuracies
+		self.accuracy_pos = rospy.get_param("~acc_pos", 0.1)
+		self.accuracy_yaw = rospy.get_param("~acc_yaw", 0.1)
 
 		# Create our action client
 		action_ns = rospy.get_param("~action_topic", 'spar/flight')
@@ -74,7 +77,6 @@ class Guidance():
 			# If shutdown is issued (eg. CTRL+C), cancel current
 	 		# mission before rospy is shutdown.
 			rospy.on_shutdown( lambda : self.shutdown() )
-
 
 	# This function will check if a list of waypoints is in the format we expect
 	def check_waypoints(self, wps):
@@ -119,69 +121,76 @@ class Guidance():
 
 	# Callback to handle an alert to inspect a ROI
 	def callback_inspect_roi(self, msg_in):
-		# TODO: HERE!
-		pass
+		# Set our flag that we are performing the diversion
+		self.performing_roi = True
 
-		# rospy.loginfo("[NAV] Got imagery trigger!")
-		# rospy.loginfo("[NAV] Stopping for 5 seconds")
+		rospy.loginfo("Starting diversion to ROI...")
+		# Cancel the current goal (if there is one)
+		self.spar_client.cancel_goal()
+		# Record our current location so we can return to it later
+		start_location = self.current_location
 
-		# self.client_base.cancel_goal()
-		# rospy.sleep(rospy.Duration(5.0))
 
-		# rospy.loginfo("[NAV] Continuing to end point...")
 
-		# self.send_wp_path(self.current_pos, self.yaw_start, self.p_end, self.yaw_end, self.nom_lvel)
+		rospy.loginfo("Reached diversion ROI!")
+		# XXX: Do something?
+		rospy.sleep(rospy.Duration(10)
 
-	def send_wp(self):
+		rospy.loginfo("Returning to flight plan...")
 
+
+
+		rospy.loginfo("Resuming flight plan from waypoint %i!" % (self.waypoint_counter + 1))
+		# Unset our flag that we are performing a diversion
+		self.performing_roi = False
+
+	def send_wp(self, x, y, z, yaw):
+		goal = FlightMotionGoal()
+		goal.motion = FlightMotionGoal.MOTION_GOTO
+		goal.position.x = x
+		goal.position.y = y
+		goal.position.z = z
+		goal.yaw = yaw
+		goal.velocity_vertical = self.vel_linear
+		goal.velocity_horizontal = self.vel_linear
+		goal.yawrate = self.vel_yaw
+		goal.wait_for_convergence = True
+		goal.position_radius = self.accuracy_pos
+		goal.yaw_range = self.accuracy_yaw
+
+		# For this function, we don't wait in the loop.
+		# Instead we just send the waypoint and check up on it later
+		# This checking is either with the "self.timer" for waypoints
+		# or with direct calls during the ROI diversion
+		self.spar_client.send_goal(goal)
+		 # If shutdown is issued, cancel current mission before rospy is shutdown
+		rospy.on_shutdown(lambda : self.spar_client.cancel_goal())
 
 	# We recieve a timer event (te) from rospy.Timer()
 	def check_waypoint_status(self, te):
-		# If the last segment has succeeded.
-		# For more complex tasks, it might be necessary to also
-		# check if you are in waypoint or diversion mode here.
-		# Hint: you would ignore a succeeded if in diversion mode.
-		# Hint: really, we should check for other status states
-		#		(such as aborted), as there are some states
-		#		where we won't recover from, and should just exit
-		if self.client_base.get_state() == GoalStatus.SUCCEEDED:
-			if self.waypoint_counter < (len(self.waypoints)-1):
-				self.send_wp(self.waypoints[waypoint_counter])
-				# Increment our waypoint counter
-				self.waypoint_counter += 1
-			else:
-				# Else the mission is over, shutdown and quit the node
+		# If we're performing the ROI diversion, then don't do
+		# anything here, as this is handled in that function
+		if not self.performing_roi:
+			# If the last segment has succeeded.
+			# For more complex tasks, it might be necessary to also
+			# check if you are in waypoint or diversion mode here.
+			# Hint: really, we should check for other status states
+			#		(such as aborted), as there are some states
+			#		where we won't recover from, and should just exit
+			if self.spar_client.get_state() == GoalStatus.SUCCEEDED:
+				if self.waypoint_counter < (len(self.waypoints)-1):
+					self.send_wp(self.waypoints[waypoint_counter])
+					# Increment our waypoint counter
+					self.waypoint_counter += 1
+				else:
+					# Else the mission is over, shutdown and quit the node
+					rospy.loginfo("Mission complete!")
+					rospy.signal_shutdown("complete")
+			elif (self.spar_client.get_state() == GoalStatus.PREEMPTED) or (self.spar_client.get_state() == GoalStatus.ABORTED) or (self.spar_client.get_state() == GoalStatus.REJECTED):
+				# TODO: HERE!
 				rospy.loginfo("Mission complete!")
 				rospy.signal_shutdown("complete")
 
-def send_wp(spar_client, x, y, z, yaw):
-	speed = rospy.get_param("~speed", 1.0)
-	accuracy = rospy.get_param("~accuracy", 0.1)
-
-	goal = FlightMotionGoal()
-	goal.motion = FlightMotionGoal.MOTION_GOTO
-	goal.position.x = x
-	goal.position.y = y
-	goal.position.z = z
-	goal.yaw = yaw
-	goal.velocity_vertical = speed
-	goal.velocity_horizontal = speed
-	goal.yawrate = speed
-	goal.wait_for_convergence = True							# Wait for our takeoff "waypoint" to be reached
-	goal.position_radius = accuracy
-	goal.yaw_range = accuracy
-
-	spar_client.send_goal(goal)
-	 # If shutdown is issued, cancel current mission before rospy is shutdown
-	rospy.on_shutdown(lambda : spar_client.cancel_goal())
-	# Wait for the result of the goal
-	spar_client.wait_for_result()
-
-	#Stop at waypoint for a moment
-	rospy.sleep(2)
-
-	# Output some feedback for our motion
-	return spar_client.get_state() == GoalStatus.SUCCEEDED
 
 def send_wps(spar_client):
 	success = True
