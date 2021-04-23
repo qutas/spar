@@ -1,0 +1,19 @@
+<?xml version='1.0'?>
+<launch>
+	<node name="guidance" pkg="spar_node" type="demo_wp_roi" respawn="false" output="screen">
+		<!-- Linear and yaw motion velocities -->
+		<param name="vel_linear" type="double" value="2.0" />
+		<param name="vel_yaw" type="double" value="0.2" />
+
+		<!-- Position and yaw waypoint accuracies -->
+		<param name="acc_pos" type="double" value="0.1" />
+		<param name="acc_yaw" type="double" value="0.1" />
+
+		<!-- Spar parameters -->
+		<param name="action_topic" type="string" value="spar/flight" />
+
+		<!-- Remappings -->
+		<remap from="~/pose" to="uavasr/pose" />
+		<!--remap from="~/roi" to="target_detection/roi" /-->
+	</node>
+</launch>

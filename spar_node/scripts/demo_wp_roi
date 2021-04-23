@@ -22,7 +22,7 @@ class Guidance():
 	def __init__(self, waypoints):
 		# Make sure we have a valid waypoint list
 		if not self.check_waypoints(waypoints):
-			raise ArgumentError("Invalid waypoint input!")
+			raise ArgumentError("Invalid waypoint list input!")
 
 		# Internal counter to see what waypoint were are up to
 		self.waypoint_counter = 0
@@ -56,7 +56,8 @@ class Guidance():
 			rospy.loginfo("Starting waypoint mission")
 
 			# Setup first waypoint segment
-			# XXX: Another option would be to do "takeoff"
+			# XXX:	Another option would be to do "takeoff" and leave "waypoint_counter = 0" to
+			#		begin the mission at the first waypoint after take-off
 			self.send_wp(self.waypoints[0])
 			self.waypoint_counter += 1
 
@@ -64,6 +65,7 @@ class Guidance():
 			self.timer = rospy.Timer( rospy.Duration(1.0/20.0), self.check_waypoint_status )
 			# Callback to save "current location" such that we can perform and return
 			# from a diversion to the correct location
+			# XXX: These topics could be hard-coded to avoid using a launch file
 			self.sub_pose = rospy.Subscriber("~pose", PoseStamped, self.callback_pose)
 			# Subscriber to catch "ROI" diversion commands
 			self.sub_roi = rospy.Subscriber("~roi", PoseStamped, self.callback_inspect_roi)
@@ -91,35 +93,49 @@ class Guidance():
 			return False
 
 		# Check each of our waypoints
-		for i in range(wps):
-			# Make sure each waypoint is a list
-			if not isinstance(wps[i], list):
-				rospy.logwarn("Waypoint %i is not a list of coordinates" % (i + 1))
-				return False
-
-			# Make sure each waypoint has 4 values
-			if len(wps) != 4:
-				rospy.logwarn("Waypoint %i has an invalid length (must be X/Y/Z/Yaw)" % (i + 1))
+		for i in range(len(wps)):
+			if not self.check_waypoint(wps[i]):
+				rospy.logwarn("Waypoint %i did not pass check" % (i + 1))
 				return False
 
 		# If we haven't returned false yet, then waypoints look good!
 		return True
 
 
+	# This function will check if a waypoint is in the format we expect
+	def check_waypoint(self, wp):
+		# Make sure each waypoint is a list
+		if not isinstance(wp, list):
+			rospy.logwarn("Waypoint is not a list of coordinates")
+			return False
+
+		# Make sure each waypoint has 4 values
+		if len(wp) != 4:
+			rospy.logwarn("Waypoint has an invalid length (must be X/Y/Z/Yaw)")
+			return False
+
+		# If we haven't returned false yet, then waypoint looks valid!
+		return True
+
+
+	# This function will make sure we shut down the node as safely as possible
 	def shutdown(self):
 		# Unregister anything that needs it here
 		self.sub_pose.unregister()
 		self.sub_roi.unregister()
 		self.spar_client.cancel_goal()
 
-		rospy.loginfo("Guidance stopped!")
+		rospy.loginfo("Guidance stopped")
 
 
+	# This function will check receive the current pose of the UAV constantly
 	def callback_pose(self, msg_in):
 		# Store the current position at all times so it can be accessed later
 		self.current_location = msg_in.pose.position
 
-	# Callback to handle an alert to inspect a ROI
+
+	# This function will fire whenever a ROI pose message is sent
+	# It is also responsible for handling the ROI "inspection task"
 	def callback_inspect_roi(self, msg_in):
 		# Set our flag that we are performing the diversion
 		self.performing_roi = True
@@ -129,28 +145,58 @@ class Guidance():
 		self.spar_client.cancel_goal()
 		# Record our current location so we can return to it later
 		start_location = self.current_location
+		# XXX:	It would also be a good idea to capture "current yaw" from
+		#		the pose to maintain that throughout a diversion
 
+		# Set the "diversion waypoint" (at yaw zero)
+		dwp = [msg_in.pose.position.x, msg_in.pose.position.y, msg_in.pose.position.z, 0.0]
+		# Set the "return waypoint" (at yaw zero)
+		rwp = [self.current_location.x, self.current_location.y, self.current_location.z, 0.0]
 
+		# XXX: Could pause here for a moment with ( "rospy.sleep(...)" ) to make sure the UAV stops correctly
+
+		self.send_wp(dwp)
+		self.spar_client.wait_for_result()
+		if self.spar_client.get_state() != GoalStatus.SUCCEEDED:
+			# Something went wrong, cancel out of guidance!
+			rospy.signal_shutdown("cancelled")
+			return
 
 		rospy.loginfo("Reached diversion ROI!")
 		# XXX: Do something?
-		rospy.sleep(rospy.Duration(10)
+		rospy.sleep(rospy.Duration(10))
 
 		rospy.loginfo("Returning to flight plan...")
 
+		self.send_wp(rwp)
+		self.spar_client.wait_for_result()
+		if self.spar_client.get_state() != GoalStatus.SUCCEEDED:
+			# Something went wrong, cancel out of guidance!
+			rospy.signal_shutdown("cancelled")
+			return
 
-
-		rospy.loginfo("Resuming flight plan from waypoint %i!" % (self.waypoint_counter + 1))
+		# "waypoint_counter" represents the "next waypoint"
+		# "waypoint_counter - 1" represents the "current waypoint"
+		rospy.loginfo("Resuming flight plan from waypoint %i!" % (self.waypoint_counter - 1))
+		self.send_wp(self.waypoints[self.waypoint_counter - 1])
 		# Unset our flag that we are performing a diversion
+		# to allow the waypoint timer to take back over
 		self.performing_roi = False
 
-	def send_wp(self, x, y, z, yaw):
+
+	# This function is for convinience to simply send out a new waypoint
+	def send_wp(self, wp):
+		# Make sure the waypoint is valid before continuing
+		if not self.check_waypoint(wp):
+			raise ArgumentError("Invalid waypoint input!")
+
+		# Build the flight goal
 		goal = FlightMotionGoal()
 		goal.motion = FlightMotionGoal.MOTION_GOTO
-		goal.position.x = x
-		goal.position.y = y
-		goal.position.z = z
-		goal.yaw = yaw
+		goal.position.x = wp[0]
+		goal.position.y = wp[1]
+		goal.position.z = wp[2]
+		goal.yaw = wp[3]
 		goal.velocity_vertical = self.vel_linear
 		goal.velocity_horizontal = self.vel_linear
 		goal.yawrate = self.vel_yaw
@@ -166,7 +212,10 @@ class Guidance():
 		 # If shutdown is issued, cancel current mission before rospy is shutdown
 		rospy.on_shutdown(lambda : self.spar_client.cancel_goal())
 
-	# We recieve a timer event (te) from rospy.Timer()
+
+	# This function will fire whenever we recieve a timer event (te) from rospy.Timer()
+	# The main purpose is to check if a waypoint has been reached,
+	# and if so, send out the next waypoint to continue the mission
 	def check_waypoint_status(self, te):
 		# If we're performing the ROI diversion, then don't do
 		# anything here, as this is handled in that function
@@ -178,22 +227,31 @@ class Guidance():
 			#		(such as aborted), as there are some states
 			#		where we won't recover from, and should just exit
 			if self.spar_client.get_state() == GoalStatus.SUCCEEDED:
-				if self.waypoint_counter < (len(self.waypoints)-1):
-					self.send_wp(self.waypoints[waypoint_counter])
+				rospy.loginfo("Reached waypoint %i!" % (self.waypoint_counter))
+
+				# XXX:	Another check could go here to finish the mission early
+				#		if "all" inspection tasks have been completed
+				#		(Add in another "if" and make the waypoint counter check
+				#		 an "elif" check instead.
+				#		 i.e. if complete; elif more wps; else wps finished)
+				if self.waypoint_counter < (len(self.waypoints)):
+					self.send_wp(self.waypoints[self.waypoint_counter])
 					# Increment our waypoint counter
 					self.waypoint_counter += 1
 				else:
 					# Else the mission is over, shutdown and quit the node
+					# XXX:	This could be used to restart the mission back to the
+					#		first waypoint instead to restart the mission
 					rospy.loginfo("Mission complete!")
 					rospy.signal_shutdown("complete")
 			elif (self.spar_client.get_state() == GoalStatus.PREEMPTED) or (self.spar_client.get_state() == GoalStatus.ABORTED) or (self.spar_client.get_state() == GoalStatus.REJECTED):
-				# TODO: HERE!
-				rospy.loginfo("Mission complete!")
-				rospy.signal_shutdown("complete")
+				rospy.loginfo("Mission cancelled!")
+				rospy.signal_shutdown("cancelled")
 
 
-def send_wps(spar_client):
-	success = True
+def main(args):
+	# Initialise ROS
+	rospy.init_node('guidance')
 
 	# List of waypoints
 	# [X, Y, Z, Yaw]
@@ -204,32 +262,12 @@ def send_wps(spar_client):
 		   [ 1.0,-1.0, 1.0, 0.0],
 		   [ 0.0, 0.0, 1.0, 0.0]]
 
-	# Loop through each waypoint in our list
-	i = 0
-	for wp in wps:
-		rospy.loginfo("Sending waypoint %i..." % (i + 1))
-		success = send_wp(spar_client, wp[0], wp[1], wp[2], wp[3])
-		i += 1
+	# Create our guidance class option
+	guide = Guidance(wps)
 
-		# If we had an error, print and stop sending
-		if not success:
-			rospy.logerr("Waypoints failed!")
-			break;
+	# Spin!
+	rospy.spin()
 
-	if success:
-		rospy.loginfo("Waypoints complete!")
-
-def main(args):
-	# Initialise ROS
-	rospy.init_node('guidance', anonymous=True)
-
-	guide = guidance
-
-	# Send the flight command
-	# This will lock the thread until it is "done"
-	# Make sure "ros is ok" in case we hit CTRL-C while waiting above
-	if not rospy.is_shutdown():
-		send_wps(spar_client)
 
 if __name__ == '__main__':
 	try:
