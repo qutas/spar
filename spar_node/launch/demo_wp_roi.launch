@@ -1,6 +1,8 @@
 <?xml version='1.0'?>
 <launch>
 	<node name="guidance" pkg="spar_node" type="demo_wp_roi" respawn="false" output="screen">
+		<!-- Survey Altitude -->
+		<param name="surveyAlt" type="double" value="0.75" />
 		<!-- Linear and yaw motion velocities -->
 		<param name="vel_linear" type="double" value="2.0" />
 		<param name="vel_yaw" type="double" value="0.2" />
@@ -9,11 +11,17 @@
 		<param name="acc_pos" type="double" value="0.1" />
 		<param name="acc_yaw" type="double" value="0.1" />
 
+		<!-- Safe boundary values for O134 -->
+		<param name="safeRangeX" type="double" value="3" />
+		<param name="safeRangeY" type="double" value="3" />
+		<param name="safeRangeZ" type="double" value="3" />
+
+
 		<!-- Spar parameters -->
 		<param name="action_topic" type="string" value="spar/flight" />
 
 		<!-- Remappings -->
 		<remap from="~/pose" to="uavasr/pose" />
-		<!--remap from="~/roi" to="target_detection/roi" /-->
+		<remap from="~roi" to="target_detection/roi" />
 	</node>
 </launch>
