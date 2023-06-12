@@ -25,7 +25,7 @@ def send_tf_camera():
 	t.transform.translation.x = 0.1
 	t.transform.translation.y = 0.0
 	t.transform.translation.z = -0.15
-	q = tf_conversions.transformations.quaternion_from_euler(0, math.pi, 0)
+	q = tf_conversions.transformations.quaternion_from_euler(0, math.pi, math.pi/2)
 	t.transform.rotation.x = q[0]
 	t.transform.rotation.y = q[1]
 	t.transform.rotation.z = q[2]
@@ -36,7 +36,7 @@ def send_tf_camera():
 
 """
 This is step typically done by the same program that outputs the pose
-
+"""
 def callback_pose( msg_in ):
 	# Create a transform at the time
 	# from the pose message for where
@@ -50,19 +50,21 @@ def callback_pose( msg_in ):
 
 	# Send the transformation
 	tfbr.sendTransform(t)
-"""
+
 
 if __name__ == '__main__':
 	rospy.init_node('tf2_broadcaster_frames')
 
 	# Setup pose subscriber
 	# This functionality is provided by the emulator
-	#rospy.Subscriber('/emulated_uav/pose', PoseStamped, callback_pose)
+	# rospy.Subscriber('/emulated_uav/pose', PoseStamped, callback_pose)
+	rospy.Subscriber('/mavros/local_position/pose', PoseStamped, callback_pose)
+	
 
 	# Setup tf2 broadcasters
 	#    Broadcaster sends a transformation that
 	#    can be found at specific time
-	#tfbr = tf2_ros.TransformBroadcaster()
+	tfbr = tf2_ros.TransformBroadcaster()
 	#    Static broadcaster sends a transformation
 	#    that is true for all time
 	tfsbr = tf2_ros.StaticTransformBroadcaster()
