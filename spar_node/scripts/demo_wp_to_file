@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+
+import rospy
+import os
+
+from breadcrumb.srv import RequestPath
+from breadcrumb.srv import RequestPathRequest
+
+if __name__ == '__main__':
+    # Setup ROS
+    rospy.init_node('path_planner', anonymous=True)
+
+    # List of waypoints (XYZ-Yaw)
+    waypoints = [[-4.5,-2.5,2.0,0.0],
+                 [-4.5, 1.5,2.0,0.0], 
+                 [-3.5, 0.5,2.0,0.0], 
+                 [-3.5,-2.5,2.0,0.0],
+                 [-2.5,-2.5,2.0,0.0], 
+                 [-2.5, 1.5,2.0,0.0],
+                 [-1.5, 1.5,2.0,0.0],
+                 [-1.5,-1.5,2.0,0.0],
+                 [ 0.0, 0.0,2.0,0.0]]
+
+    # Wait to connect with Breadcrumb
+    rospy.wait_for_service('/breadcrumb/request_path')
+    srvc_bc = rospy.ServiceProxy('/breadcrumb/request_path', RequestPath)
+
+    # File to store waypoints
+    waypoints_file = os.path.expanduser("~/waypoints.txt")
+
+    # Open the file in write mode
+    with open(waypoints_file, "w") as f:
+        # Loop through the list of waypoints
+        for i in range(len(waypoints) - 1):
+            # Set up a path request for breadcrumb
+            req = RequestPathRequest()
+            req.start.x = waypoints[i][0]
+            req.start.y = waypoints[i][1]
+            req.start.z = waypoints[i][2]
+            req.end.x = waypoints[i+1][0]
+            req.end.y = waypoints[i+1][1]
+            req.end.z = waypoints[i+1][2]
+
+            res = srvc_bc(req)
+
+            if len(res.path.poses) > 0:
+                # Print the path to the screen
+                rospy.loginfo("Segment %i:", i + 1)
+                rospy.loginfo("[%0.2f;%0.2f;%0.2f] => [%0.2f;%0.2f;%0.2f]",
+                              req.start.x, req.start.y, req.start.z,
+                              req.end.x, req.end.y, req.end.z)
+
+                # Loop through the solution returned from breadcrumb
+                for i in range(len(res.path.poses) - 1):
+                    x = res.path.poses[i].position.x
+                    y = res.path.poses[i].position.y
+                    z = res.path.poses[i].position.z
+
+                    rospy.loginfo("    [%0.2f;%0.2f;%0.2f]", x, y, z)
+
+                    # Write the waypoint to file
+                    f.write(f"{x} {y} {z}\n")
+            else:
+                rospy.logerr("Solution not found")
+
+    rospy.loginfo(f"Waypoints saved to: {waypoints_file}")
+

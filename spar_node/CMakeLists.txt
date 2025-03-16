@@ -173,6 +173,9 @@ catkin_install_python(PROGRAMS
   scripts/goto
   scripts/takeoff
   scripts/land
+  scripts/demo_wp_roi
+  scripts/demo_wp_to_file
+  scripts/demo_wp_to_file_vis
   scripts/tf2_listener
   scripts/tf2_broadcaster_frames
   scripts/tf2_broadcaster_target

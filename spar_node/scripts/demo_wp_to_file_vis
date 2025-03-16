@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+
+import rospy
+import os
+
+from breadcrumb.srv import RequestPath
+from breadcrumb.srv import RequestPathRequest
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import PoseStamped, Point
+from std_msgs.msg import ColorRGBA
+from nav_msgs.msg import Path
+
+if __name__ == '__main__':
+    # Setup ROS
+    rospy.init_node('path_planner', anonymous=True)
+
+    # List of waypoints (XYZ-Yaw)
+    waypoints = [[-4.5, -2.5, 2.0, 0.0],
+                 [-4.5, 1.5, 2.0, 0.0],
+                 [-3.5, 0.5, 2.0, 0.0],
+                 [-3.5, -2.5, 2.0, 0.0],
+                 [-2.5, -2.5, 2.0, 0.0],
+                 [-2.5, 1.5, 2.0, 0.0],
+                 [-1.5, 1.5, 2.0, 0.0],
+                 [-1.5, -1.5, 2.0, 0.0],
+                 [-0.5, -2.5, 2.0, 0.0],
+                 [-0.5, 1.5, 2.0, 0.0],
+                 [0.5, 0.5, 2.0, 0.0],
+                 [0.5, -2.5, 2.0, 0.0],
+                 [1.5, -2.5, 2.0, 0.0],
+                 [1.5, 1.5, 2.0, 0.0],
+                 [2.5, 1.5, 2.0, 0.0],
+                 [2.5, -2.5, 2.0, 0.0],
+                 [3.5, -1.5, 2.0, 0.0],
+                 [3.5, 1.5, 2.0, 0.0]]
+
+    # Wait to connect with Breadcrumb
+    rospy.wait_for_service('/breadcrumb/request_path')
+    srvc_bc = rospy.ServiceProxy('/breadcrumb/request_path', RequestPath)
+
+    # File to store waypoints
+    waypoints_file = os.path.expanduser("~/waypoints.txt")
+
+    # RVIZ Publishers
+    waypoints_pub = rospy.Publisher('/waypoints', MarkerArray, queue_size=10, latch=True)
+    path_pub = rospy.Publisher('/planned_path', Path, queue_size=10, latch=True)
+    generated_waypoints_pub = rospy.Publisher('/generated_waypoints', MarkerArray, queue_size=10, latch=True) #new publisher
+
+    # Waypoints Marker Array (Original Waypoints)
+    waypoints_marker_array = MarkerArray()
+    for i, wp in enumerate(waypoints):
+        marker = Marker()
+        marker.header.frame_id = "map"  # Adjust frame_id as needed
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "waypoints"
+        marker.id = i
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = wp[0]
+        marker.pose.position.y = wp[1]
+        marker.pose.position.z = wp[2]
+        marker.scale.x = 0.5
+        marker.scale.y = 0.5
+        marker.scale.z = 0.5
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.color.a = 1.0
+        waypoints_marker_array.markers.append(marker)
+    waypoints_pub.publish(waypoints_marker_array)
+
+    # Path Message
+    planned_path = Path()
+    planned_path.header.frame_id = "map"  # Adjust frame_id as needed
+    planned_path.header.stamp = rospy.Time.now()
+
+    # Generated Waypoints Marker Array (Green and smaller)
+    generated_waypoints_marker_array = MarkerArray()
+    generated_waypoint_id = 0 #id counter for generated waypoints
+
+    # Open the file in write mode
+    with open(waypoints_file, "w") as f:
+        # Loop through the list of waypoints
+        for i in range(len(waypoints) - 1):
+            # Set up a path request for breadcrumb
+            req = RequestPathRequest()
+            req.start.x = waypoints[i][0]
+            req.start.y = waypoints[i][1]
+            req.start.z = waypoints[i][2]
+            req.end.x = waypoints[i + 1][0]
+            req.end.y = waypoints[i + 1][1]
+            req.end.z = waypoints[i + 1][2]
+
+            res = srvc_bc(req)
+
+            if len(res.path.poses) > 0:
+                # Print the path to the screen
+                rospy.loginfo("Segment %i:", i + 1)
+                rospy.loginfo("[%0.2f;%0.2f;%0.2f] => [%0.2f;%0.2f;%0.2f]",
+                              req.start.x, req.start.y, req.start.z,
+                              req.end.x, req.end.y, req.end.z)
+
+                # Loop through the solution returned from breadcrumb
+                for pose in res.path.poses:
+                    x = pose.position.x
+                    y = pose.position.y
+                    z = pose.position.z
+
+                    rospy.loginfo("    [%0.2f;%0.2f;%0.2f]", x, y, z)
+
+                    # Write the waypoint to file
+                    f.write(f"{x} {y} {z}\n")
+
+                    # Add to planned path
+                    pose_stamped = PoseStamped()
+                    pose_stamped.header.frame_id = "map"  # Adjust frame_id as needed
+                    pose_stamped.header.stamp = rospy.Time.now()
+                    pose_stamped.pose = pose
+                    planned_path.poses.append(pose_stamped)
+
+                    # Add generated waypoint marker
+                    generated_marker = Marker()
+                    generated_marker.header.frame_id = "map"
+                    generated_marker.header.stamp = rospy.Time.now()
+                    generated_marker.ns = "generated_waypoints"
+                    generated_marker.id = generated_waypoint_id
+                    generated_marker.type = Marker.SPHERE
+                    generated_marker.action = Marker.ADD
+                    generated_marker.pose.position.x = x
+                    generated_marker.pose.position.y = y
+                    generated_marker.pose.position.z = z
+                    generated_marker.scale.x = 0.2
+                    generated_marker.scale.y = 0.2
+                    generated_marker.scale.z = 0.2
+                    generated_marker.color.r = 0.0
+                    generated_marker.color.g = 1.0
+                    generated_marker.color.b = 0.0
+                    generated_marker.color.a = 1.0
+                    generated_waypoints_marker_array.markers.append(generated_marker)
+                    generated_waypoint_id += 1
+
+                path_pub.publish(planned_path) #publish the path after adding each segment.
+                generated_waypoints_pub.publish(generated_waypoints_marker_array) #publish generated waypoints.
+
+            else:
+                rospy.logerr("Solution not found")
+
+    rospy.loginfo(f"Waypoints saved to: {waypoints_file}")
+    rospy.spin()
