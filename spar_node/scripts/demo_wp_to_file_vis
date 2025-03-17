@@ -73,6 +73,15 @@ if __name__ == '__main__':
     planned_path = Path()
     planned_path.header.frame_id = "map"  # Adjust frame_id as needed
     planned_path.header.stamp = rospy.Time.now()
+    
+    # Add initial waypoint to planned path
+    pose_stamped = PoseStamped()
+    pose_stamped.header.frame_id = "map"  # Adjust frame_id as needed
+    pose_stamped.header.stamp = rospy.Time.now()
+    pose_stamped.pose.position.x = waypoints[0][0]
+    pose_stamped.pose.position.y = waypoints[0][1]
+    pose_stamped.pose.position.z = waypoints[0][2]
+    planned_path.poses.append(pose_stamped)
 
     # Generated Waypoints Marker Array (Green and smaller)
     generated_waypoints_marker_array = MarkerArray()
@@ -80,6 +89,11 @@ if __name__ == '__main__':
 
     # Open the file in write mode
     with open(waypoints_file, "w") as f:
+        # Save initial waypoint
+        rospy.loginfo("    [%0.2f;%0.2f;%0.2f]", waypoints[0][0], waypoints[0][1], waypoints[0][2])
+        # Write first waypoint to file
+        f.write(f"{waypoints[0][0]} {waypoints[0][1]} {waypoints[0][2]}\n")
+        
         # Loop through the list of waypoints
         for i in range(len(waypoints) - 1):
             # Set up a path request for breadcrumb
@@ -92,24 +106,35 @@ if __name__ == '__main__':
             req.end.z = waypoints[i + 1][2]
 
             res = srvc_bc(req)
+            
+            # poses_list = res.path_sparse.poses    # Used to load spare poses from A*, when breadcrumb is lauched with any_angle parameter = false
+            poses_list = res.path_sparse.poses
+            if len(poses_list) < 1:
+                poses_list = res.path.poses
 
-            if len(res.path.poses) > 0:
+            if len(poses_list) > 0:
                 # Print the path to the screen
                 rospy.loginfo("Segment %i:", i + 1)
                 rospy.loginfo("[%0.2f;%0.2f;%0.2f] => [%0.2f;%0.2f;%0.2f]",
                               req.start.x, req.start.y, req.start.z,
                               req.end.x, req.end.y, req.end.z)
 
+                startPose = True
                 # Loop through the solution returned from breadcrumb
-                for pose in res.path.poses:
+                for pose in poses_list:
                     x = pose.position.x
                     y = pose.position.y
                     z = pose.position.z
-
-                    rospy.loginfo("    [%0.2f;%0.2f;%0.2f]", x, y, z)
+                    
+                    # Skip saving the starting pose for each transect to avoid repetition, assuming the drone started already there.
+                    if startPose:
+                        startPose = False
+                        continue
+                    
+                    rospy.loginfo("[%0.2f;%0.2f;%0.2f]", x, y, z)
 
                     # Write the waypoint to file
-                    f.write(f"{x} {y} {z}\n")
+                    f.write(" %0.2f %0.2f %0.2f \n"%(x, y, z))
 
                     # Add to planned path
                     pose_stamped = PoseStamped()
